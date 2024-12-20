@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -5,14 +7,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 
-dataType = 'Vegetable'
+dataType = 'Tongue'
 
-class VegetableDataset:
+
+class TongueDataset:
     def __init__(self, batch_size=16):
         self.batch_size = batch_size
-        self.train_dataset_dir = r'./Data/Vegetable/train'
-        self.test_dataset_dir = r'./Data/Vegetable/test'
-        self.validation_dataset_dir = r'./Data/Vegetable/validation'
+        self.train_dataset_dir = f'./Data/{dataType}/train'
+        self.test_dataset_dir = f'./Data/{dataType}/test'
+        self.validation_dataset_dir = f'./Data/{dataType}/validation'
 
         self.transform = torchvision.transforms.Compose([
             torchvision.transforms.Resize((224, 224)),
@@ -77,7 +80,7 @@ class VegetableDataset:
         plt.show()
 
 
-class VegetableResnet(torch.nn.Module):
+class TongueResnet(torch.nn.Module):
     def __init__(self, image_width=224, image_height=224, num_classifications=15,
                  enable_dropout=False, enable_bn=False):
         super().__init__()
@@ -117,6 +120,7 @@ class VegetableResnet(torch.nn.Module):
 class ModelTrainer():
     def __init__(self, model, loss_func, optimizer, lr_scheduler=None):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(self.device)
         self.model = model
         self.model = self.model.to(self.device)
         self.loss_func = loss_func
@@ -264,20 +268,20 @@ class ModelTrainer():
 
 
 def train_with_resnet(including_finetune=True):
-    model = VegetableResnet()
+    model = TongueResnet()
     model.transfer_learning_mode()
     loss_func = torch.nn.CrossEntropyLoss()
     # 仅优化分类器参数
     optimizer = torch.optim.Adam(model.resnet.fc.parameters(), lr=0.0001)
 
-    veg = VegetableDataset(batch_size=16)
+    tongs = TongueDataset(batch_size=16)
     # 训练数据
-    train_dataloader = veg.load_train_data()
-    # veg.show_sample_images()
+    train_dataloader = tongs.load_train_data()
+    # tongs.show_sample_images()
     # 训练数据
-    test_dataloader = veg.load_test_data()
+    test_dataloader = tongs.load_test_data()
     # 验证数据
-    validation_dataloader = veg.load_validation_data()
+    validation_dataloader = tongs.load_validation_data()
 
     # Train model and save best one
     print('Begin transfer learning...')
@@ -293,86 +297,105 @@ def train_with_resnet(including_finetune=True):
         trainer = ModelTrainer(model, loss_func, optimizer_finetune)
         trainer.fit(train_dataloader, test_dataloader, 2)
 
-    # Load best mode
+    # Load best model
+    # trainer.load_checkpoint('./VegetableResnet50.ckpt')
     trainer.load_checkpoint(f'./{dataType}Resnet50.ckpt')
     avg_val_loss, avg_val_accuracy = trainer.validate(validation_dataloader)
     print(f'Validation: {avg_val_accuracy * 100}%, {avg_val_loss}')
 
     # Try to predict single image
-    '''
-    images = [
-        './Data/Vegetable/validation/Bean/0192.jpg',
-        './Data/Vegetable/validation/Cabbage/1202.jpg',
-        './Data/Vegetable/validation/Carrot/1202.jpg',
-        './Data/Vegetable/validation/Cauliflower/1258.jpg',
-        './Data/Vegetable/validation/Papaya/1004.jpg',
-        './Data/Vegetable/validation/Potato/1202.jpg',
-        './Data/Vegetable/validation/Pumpkin/1202.jpg',
-        './Data/Vegetable/validation/Tomato/1253.jpg'
-    ]
-    '''
 
     images = [
-        './Data/Tongue/validation/shese_an_hong_she/01012.jpg',
-        './Data/Tongue/validation/shese_dan_bai_she/01003.jpg',
-        './Data/Tongue/validation/shese_dan_hong_she/01001.jpg',
+        './Data/Tongue/validation/shese_an_hong_she/1601019973062595_2024-12-09-16-47-22_0.jpg',
+        './Data/Tongue/validation/shese_dan_bai_she/02087.jpg',
+        './Data/Tongue/validation/shese_dan_hong_she/01069.jpg',
         './Data/Tongue/validation/shese_dan_she/01007.jpg',
-        './Data/Tongue/validation/shese_dan_zi_she/01058.jpg',
-        './Data/Tongue/validation/shese_hong_she/01004.jpg',
-        './Data/Tongue/validation/shese_jiang_she/01011.jpg',
-        './Data/Tongue/validation/shese_jiang_zi_she/01018.jpg',
-        './Data/Tongue/validation/shese_zi_hong_she/01013.jpg'
+        './Data/Tongue/validation/shese_dan_zi_she/02089.jpg',
+        './Data/Tongue/validation/shese_hong_she/1717899939393476_2024-06-09-10-25-39_0.jpg',
+        './Data/Tongue/validation/shese_jiang_she/1721954933890934_2024-07-26-08-48-53_0.jpg',
+        './Data/Tongue/validation/shese_jiang_zi_she/1607143237690706_2024-03-09-10-35-53_0.jpg',
+        './Data/Tongue/validation/shese_zi_hong_she/1715739328072302_2024-05-15-10-15-27_0.jpg'
     ]
 
     for path in images:
         img = Image.open(path)
-        img_tensor = veg.transform(img)
+        img_tensor = tongs.transform(img)
         img_tensor.unsqueeze_(0)
         img_tensor = img_tensor.to(trainer.device)
         prediction = trainer.predict(img_tensor)
         # numpy需要到CPU上操作
         index = prediction.to('cpu').data.numpy().argmax()
-        label = veg.id_to_class[index]
+        label = tongs.id_to_class[index]
         print(label)
 
 
-def test_model():
-    model = VegetableResnet()
+def predict_images():
+    # 初始化模型
+    model = TongueResnet()
     model.transfer_learning_mode()
-    loss_func = torch.nn.CrossEntropyLoss()
-    # 仅优化分类器参数
-    optimizer = torch.optim.Adam(model.resnet.fc.parameters(), lr=0.00001)
-    veg = VegetableDataset(batch_size=16)
-    veg.load_train_data()
-    trainer = ModelTrainer(model, loss_func, optimizer)
-    # Load best model
-    trainer.load_checkpoint(f'./{dataType}Resnet50.ckpt')
 
-    # Try to predict single image
+    # 加载已保存的模型权重
+    checkpoint_path = f'./{dataType}Resnet50.ckpt'
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+    model.load_state_dict(checkpoint['model'])
+    model.eval()
+
+    # 设置设备
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = model.to(device)
+
+    # 加载数据集处理器
+    veg = TongueDataset(batch_size=16)
+    veg.load_train_data()
+    veg.load_test_data()
+    # 验证数据
+    veg.load_validation_data()
+
+    # 定义测试图像列表
     images = [
-        './Data/Vegetable/validation/Bean/0192.jpg',
-        './Data/Vegetable/validation/Cabbage/1202.jpg',
-        './Data/Vegetable/validation/Carrot/1202.jpg',
-        './Data/Vegetable/validation/Cauliflower/1258.jpg',
-        './Data/Vegetable/validation/Papaya/1004.jpg',
-        './Data/Vegetable/validation/Potato/1202.jpg',
-        './Data/Vegetable/validation/Pumpkin/1202.jpg',
-        './Data/Vegetable/validation/Tomato/1202.jpg'
+        './Data/Tongue/validation/shese_an_hong_she/1601019973062595_2024-12-09-16-47-22_0.jpg',
+        './Data/Tongue/validation/shese_dan_bai_she/02087.jpg',
+        './Data/Tongue/validation/shese_dan_hong_she/01069.jpg',
+        './Data/Tongue/validation/shese_dan_she/01007.jpg',
+        './Data/Tongue/validation/shese_dan_zi_she/02089.jpg',
+        './Data/Tongue/validation/shese_hong_she/1717899939393476_2024-06-09-10-25-39_0.jpg',
+        './Data/Tongue/validation/shese_jiang_she/1721954933890934_2024-07-26-08-48-53_0.jpg',
+        './Data/Tongue/validation/shese_jiang_zi_she/1607143237690706_2024-03-09-10-35-53_0.jpg',
+        './Data/Tongue/validation/shese_zi_hong_she/1715739328072302_2024-05-15-10-15-27_0.jpg'
     ]
 
-
+    # 逐一测试图像
     for path in images:
-        img = Image.open(path)
-        img_tensor = veg.transform(img)
-        img_tensor.unsqueeze_(0)
-        img_tensor = img_tensor.to(trainer.device)
-        prediction = trainer.predict(img_tensor)
-        # numpy需要到CPU上操作
-        index = prediction.to('cpu').data.numpy().argmax()
-        label = veg.id_to_class[index]
-        print(label)
+        try:
+            # 加载图像并进行预处理
+            img = Image.open(path)
+            img_tensor = veg.transform(img)
+            img_tensor.unsqueeze_(0)
+            img_tensor = img_tensor.to(device)
+            # 模型预测
+            with torch.no_grad():
+                prediction = model(img_tensor)
+
+            # 获取预测类别
+            index = prediction.to('cpu').data.numpy().argmax()
+            label = veg.id_to_class[index]
+            # print(f"Image: {path}")
+            print(f"Predicted Label: {label}")
+        except Exception as e:
+            print(f"Error processing image {path}: {e}")
+
+
+def testCpuOrGpu():
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Is CUDA available: {torch.cuda.is_available()}")
+    print(f"CUDA version: {torch.version.cuda}")
+    print(f"Device count: {torch.cuda.device_count()}")
+    print(f"Current device: {torch.cuda.current_device()}")
+    print(f"Device name: {torch.cuda.get_device_name(0)}")
+    print(f'Running on {device}')
 
 
 if __name__ == '__main__':
-    #train_with_resnet(True)
-    test_model()
+    testCpuOrGpu()
+    train_with_resnet(True)
+    predict_images()
